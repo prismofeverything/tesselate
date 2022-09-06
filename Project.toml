@@ -1,0 +1,4 @@
+name = "tesselate"
+uuid = "e2e28994-3009-4a15-ac82-10ce975ca4e5"
+authors = ["Ryan Spangler <ryan.spangler@gmail.com>"]
+version = "0.1.0"
