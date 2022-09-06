@@ -119,7 +119,7 @@ function draw_repair(cairo, unit, location, color)
     stroke(cairo)
 end
 
-function draw_link(cairo, unit, location, color)
+function draw_link(cairo, unit, a, b, color)
     
 end
 
