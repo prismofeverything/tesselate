@@ -11,7 +11,21 @@ unit_size = 40
 grid_size = [30, 30]
 
 function generate_world(grid)
-    ones(Int8, grid[1], grid[2])
+    Dict(
+        "states" => ones(Int8, grid[1], grid[2]),
+        "links" => Vector{Matrix{Int8}}()
+    )
+end
+
+function set_state(world, location, state)
+    world["states"][location[1], location[2]] = state
+    world
+end
+
+function add_link(world, a, b)
+    link = reduce(hcat, [a, b])
+    push!(world["links"], link)
+    world
 end
 
 symbols = Dict(
@@ -31,11 +45,26 @@ colors = Dict(
 )
 
 world = generate_world(grid_size)
-world[3, 4] = 2
-world[11, 8] = 3
-world[8, 14] = 4
+set_state(world, [3, 4], 2)
+set_state(world, [3, 5], 2)
+set_state(world, [5, 7], 2)
+set_state(world, [6, 7], 2)
+set_state(world, [11, 8], 3)
+set_state(world, [8, 14], 4)
+add_link(world, [3, 4], [3, 5])
+add_link(world, [5, 7], [6, 7])
 
 println(world)
+
+# dynamics
+
+# O -> A
+# [] -> B
+# * -> F
+# △ -> Phi
+# all we are missing is a △ to "repair" our * from [], and also to have [] act on * to produce △
+
+
 
 # drawing
 
@@ -120,7 +149,30 @@ function draw_repair(cairo, unit, location, color)
 end
 
 function draw_link(cairo, unit, a, b, color)
-    
+    set_source_rgb(cairo, color[1], color[2], color[3])
+
+    radius = unit / 3
+    width = unit / 6
+    vertical = a[1] == b[1]
+    horizontal = a[2] == b[2]
+
+    if vertical
+        top = a[2]
+        if b[2] < top
+            top = b[2]
+        end
+        rectangle(cairo, a[1] - width, top + radius, width * 2, unit - (radius * 2))
+        fill(cairo)
+    else if horizontal
+        left = a[1]
+        if b[1] < left
+            left = b[1]
+        end
+        rectangle(cairo, left + radius, a[2] - width, unit - (radius * 2), width * 2)
+        fill(cairo)
+    else
+        
+    end
 end
 
 draw_symbols = Dict(
@@ -131,16 +183,29 @@ draw_symbols = Dict(
     4 => draw_repair
 )
 
+function find_location(index, unit)
+    location = (index - [1, 0]) * unit
+    location += [unit / 2, -unit / 2]
+end
+
 function draw_world(cairo, world, unit, symbols, colors)
-    for index in each(world)
-        state = world[index]
+    set_line_width(cairo, 5.0)
+    set_line_cap(cairo, Cairo.CAIRO_LINE_CAP_ROUND)
+
+    for index in each(world["states"])
+        state = world["states"][index]
         if state > 0
-            location = ([i for i in Tuple(index)] - [1, 0]) * unit
-            location += [unit / 2, -unit / 2]
+            location = find_location([i for i in Tuple(index)], unit)
             color = colors[state]
             draw = draw_symbols[state]
             draw(cairo, unit, location, color)
         end
+    end
+
+    for link in world["links"]
+        a = find_location(link[:, 1], unit)
+        b = find_location(link[:, 2], unit)
+        draw_link(cairo, unit, a, b, colors[0])
     end
 end
 
