@@ -1,5 +1,8 @@
 module tesselate
 
+using Random
+using Distributions
+
 function each(m)
     x, y = axes(m)
     eachindex(view(m, x, y))
@@ -8,13 +11,17 @@ end
 # grid
 
 unit_size = 40
-grid_size = [30, 30]
 
-function generate_world(grid)
+function generate_world(bounds)
     Dict(
-        "states" => ones(Int8, grid[1], grid[2]),
-        "links" => Vector{Matrix{Int8}}()
+        "states" => ones(Int8, bounds[1], bounds[2]),
+        "links" => Vector{Matrix{Int8}}(),
+        "from" => Dict{Vector{Int8}, Vector{Vector{Int8}}}()
     )
+end
+
+function world_size(world)
+    size(world["states"])
 end
 
 function set_state(world, location, state)
@@ -22,40 +29,85 @@ function set_state(world, location, state)
     world
 end
 
+function get_state(world, location)
+    world["states"][location[1], location[2]]
+end
+
+function state_indexes(world)
+    each(world["states"])
+end
+
+function has_link(world, a, b)
+    if haskey(world["from"], a)
+        b in world["from"][a]
+    else
+        false
+    end
+end
+
+function add_from(world, a, b)
+    if !haskey(world["from"], a)
+        world["from"][a] = []
+    end
+    push!(world["from"][a], b)
+end
+
 function add_link(world, a, b)
-    link = reduce(hcat, [a, b])
-    push!(world["links"], link)
+    if !has_link(world, a, b)
+        link = reduce(hcat, [a, b])
+        push!(world["links"], link)
+        add_from(world, a, b)
+        add_from(world, b, a)
+    end
     world
 end
 
+function link_count(world, a)
+    if haskey(world["from"], a)
+        size(world["from"][a])
+    else
+        0
+    end
+end
+
+EMPTY = 0
+SUBSTRATE = 1
+MEMBRANE = 2
+ENZYME = 3
+REPAIR = 4
+
 symbols = Dict(
-    0 => " ",
-    1 => "◯",
-    2 => "⧇",
-    3 => "*",
-    4 => "△"
+    EMPTY => " ",
+    SUBSTRATE => "◯",
+    MEMBRANE => "⧇",
+    ENZYME => "*",
+    REPAIR => "△"
 )
 
 colors = Dict(
-    0 => [0, 0, 0],
-    1 => [0.6, 0.6, 0.6],
-    2 => [0.8, 0.7, 0.1],
-    3 => [0.7, 0.1, 0.6],
-    4 => [0.1, 0.7, 0.4]
+    EMPTY => [0, 0, 0],
+    SUBSTRATE => [0.6, 0.6, 0.6],
+    MEMBRANE => [0.8, 0.7, 0.1],
+    ENZYME => [0.7, 0.1, 0.6],
+    REPAIR => [0.1, 0.7, 0.4]
 )
 
-function initialize_world()
-    world = generate_world(grid_size)
-    set_state(world, [3, 4], 2)
-    set_state(world, [3, 5], 2)
-    set_state(world, [5, 7], 2)
-    set_state(world, [6, 7], 2)
-    set_state(world, [11, 8], 3)
-    set_state(world, [8, 14], 4)
-    add_link(world, [3, 4], [3, 5])
-    add_link(world, [5, 7], [6, 7])
+function random_location(bounds)
+    [rand(1:bounds[1]), rand(1:bounds[2])]
+end
 
-    println(world)
+function initialize_world(bounds, counts)
+    world = generate_world(bounds)
+    for (state, count) in counts
+        for n in 1:count
+            location = random_location(bounds)
+            while get_state(world, location) != 1
+                println(location)
+                location = random_location(bounds)
+            end
+            set_state(world, location, state)
+        end
+    end
     world
 end
 
@@ -67,63 +119,186 @@ end
 # △ -> Phi
 # all we are missing is a △ to "repair" our * from [], and also to have [] act on * to produce △
 
+function mod_index(x, d)
+    r = mod1(x, d)
+    if r == 0
+        r = d
+    end
+    r
+end
+
 function mod_location(bounds, location)
     [
-        mod1(location[1], bounds[1]),
-        mod1(location[2], bounds[2]),
+        mod_index(location[1], bounds[1]),
+        mod_index(location[2], bounds[2]),
     ]
 end
 
 function adjacent_locations(world, location)
-    bounds = 
-    [[location[1], location[2]]]
+    bounds = world_size(world)
+    mod_bounds = l -> mod_location(bounds, l)
+    adjacent = [
+        [location[1], location[2]+1],
+        [location[1], location[2]-1],
+        [location[1]+1, location[2]],
+        [location[1]-1, location[2]]
+    ]
+
+    map(mod_bounds, adjacent)
 end
 
 function no_action(world, location)
     world
 end
 
-function move_substrate(world, location)
-    
+function move_element(world, location)
+    bounds = world_size(world)
+    state = get_state(world, location)
+    adjacent = adjacent_locations(world, location)
+    order = shuffle(adjacent)
+    for space in order
+        if get_state(world, space) == EMPTY
+            world = set_state(world, location, EMPTY)
+            world = set_state(world, space, state)
+            break
+        elseif state == SUBSTRATE && get_state(world, space) == MEMBRANE
+            direction = space - location
+            beyond = mod_location(bounds, space + (direction * 2))
+            if get_state(world, beyond) == EMPTY
+                world = set_state(world, location, EMPTY)
+                world = set_state(world, beyond, state)
+                break
+            end
+        end
+    end
+    world
+end
+
+function move_membrane(world, location)
+    if link_count(world, location) == 0
+        world = move_element(world, location)
+    end
+    world
+end
+
+function consolidate_actions(dynamics)
+    consolidate = Dict()
+
+    for (state, actions) in dynamics
+        action_map = Dict(
+            "total_propensity" => 0,
+            "propensities" => [],
+            "actions" => []
+        )
+
+        for possibility in actions
+            propensity = possibility["propensity"]
+            action_map["total_propensity"] += propensity
+            push!(action_map["propensities"], propensity)
+            push!(action_map["actions"], possibility["action"])
+        end
+
+        consolidate[state] = action_map
+    end
+    consolidate
 end
 
 function generate_dynamics()
-    Dict(
-        0 => Dict(
-            
-        ),
-        1 => [
+    dynamics = Dict(
+        EMPTY => [
+            Dict(
+                "propensity" => 1,
+                "action" => no_action
+            )
+        ],
+        SUBSTRATE => [
             Dict(
                 "propensity" => 1,
                 "action" => no_action
             ),
             Dict(
                 "propensity" => 1,
-                "action" => move_substrate
+                "action" => move_element
             )
         ],
-        2 => Dict(
-
-        ),
-        3 => Dict(
-
-        ),
-        4 => Dict(
-
-        )
+        MEMBRANE => [
+            Dict(
+                "propensity" => 1,
+                "action" => no_action
+            ),
+            Dict(
+                "propensity" => 1,
+                "action" => move_membrane
+            )
+        ],
+        ENZYME => [
+            Dict(
+                "propensity" => 1,
+                "action" => no_action
+            ),
+            Dict(
+                "propensity" => 1,
+                "action" => move_element
+            )
+        ],
+        REPAIR => [
+            Dict(
+                "propensity" => 1,
+                "action" => no_action
+            ),
+            Dict(
+                "propensity" => 1,
+                "action" => move_element
+            )
+        ],
     )
+
+    consolidate_actions(dynamics)
+end
+
+function choose_action(possibilities)
+    total = possibilities["total_propensity"]
+    choice = rand(Uniform(0, total))
+    index = 1
+    action = possibilities["actions"][index]
+    propensity = possibilities["propensities"][index]
+    while choice > propensity
+        choice -= propensity
+        index += 1
+        action = possibilities["actions"][index]
+        propensity = possibilities["propensities"][index]
+    end
+    action
 end
 
 function generate_actions(world, dynamics)
-    for index in each(world["states"])
+    actions = []
+    for index in state_indexes(world)
         state = world["states"][index]
         possibilities = dynamics[state]
-    end    
+        action = choose_action(possibilities)
+        push!(actions, ([i for i in Tuple(index)], action))
+    end
+    shuffle(actions)
+end
+
+function apply_action(world, location_action)
+    location, action = location_action
+    action(world, location)
+end
+
+function apply_actions(world, actions)
+    for action in actions
+        world = apply_action(world, action)
+    end
+    world
 end
 
 # drawing
 
 using Cairo
+
+grid_size = [13, 13]
 
 surface_size = [
     grid_size[1] * unit_size,
@@ -231,11 +406,11 @@ function draw_link(cairo, unit, a, b, color)
 end
 
 draw_symbols = Dict(
-    0 => draw_nothing,
-    1 => draw_substrate,
-    2 => draw_membrane,
-    3 => draw_enzyme,
-    4 => draw_repair
+    EMPTY => draw_nothing,
+    SUBSTRATE => draw_substrate,
+    MEMBRANE => draw_membrane,
+    ENZYME => draw_enzyme,
+    REPAIR => draw_repair
 )
 
 function find_location(index, unit)
@@ -243,13 +418,14 @@ function find_location(index, unit)
     location += [unit / 2, -unit / 2]
 end
 
-function draw_world(cairo, world, unit, symbols, colors)
+function draw_world(cairo, surface_size, world, unit, symbols, colors)
+    set_background(cairo, surface_size)
     set_line_width(cairo, 5.0)
     set_line_cap(cairo, Cairo.CAIRO_LINE_CAP_ROUND)
 
-    for index in each(world["states"])
+    for index in state_indexes(world)
         state = world["states"][index]
-        if state > 0
+        if state > EMPTY
             location = find_location([i for i in Tuple(index)], unit)
             color = colors[state]
             draw = draw_symbols[state]
@@ -264,12 +440,45 @@ function draw_world(cairo, world, unit, symbols, colors)
     end
 end
 
+function test_world()
+    world = generate_world(grid_size)
+    set_state(world, [3, 4], MEMBRANE)
+    set_state(world, [3, 5], MEMBRANE)
+    set_state(world, [5, 7], MEMBRANE)
+    set_state(world, [6, 7], MEMBRANE)
+    set_state(world, [11, 8], ENZYME)
+    set_state(world, [8, 12], REPAIR)
+    add_link(world, [3, 4], [3, 5])
+    add_link(world, [5, 7], [6, 7])
+
+    println(world)
+    world
+end
+
 cairo_surface, cairo = initialize_cairo(surface_size)
-set_background(cairo, surface_size)
 
-world = initialize_world()
-draw_world(cairo, world, unit_size, symbols, colors)
+function run_simulation(bounds, counts)
+    world = initialize_world(bounds, counts)
+    dynamics = generate_dynamics()
 
-write_to_png(cairo_surface, "tesselate.png")
+    draw_world(cairo, surface_size, world, unit_size, symbols, colors)
+    write_to_png(cairo_surface, "out/frames/tesselate-1.png")
+
+    actions = generate_actions(world, dynamics)
+    world = apply_actions(world, actions)
+
+    draw_world(cairo, surface_size, world, unit_size, symbols, colors)
+    write_to_png(cairo_surface, "out/frames/tesselate-2.png")
+end
+
+run_simulation(
+    [13, 13],
+    Dict(
+        EMPTY => 21,
+        MEMBRANE => 8,
+        ENZYME => 5,
+        REPAIR => 3
+    )
+)
 
 end # module tesselate
