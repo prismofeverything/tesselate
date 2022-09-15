@@ -44,17 +44,20 @@ colors = Dict(
     4 => [0.1, 0.7, 0.4]
 )
 
-world = generate_world(grid_size)
-set_state(world, [3, 4], 2)
-set_state(world, [3, 5], 2)
-set_state(world, [5, 7], 2)
-set_state(world, [6, 7], 2)
-set_state(world, [11, 8], 3)
-set_state(world, [8, 14], 4)
-add_link(world, [3, 4], [3, 5])
-add_link(world, [5, 7], [6, 7])
+function initialize_world()
+    world = generate_world(grid_size)
+    set_state(world, [3, 4], 2)
+    set_state(world, [3, 5], 2)
+    set_state(world, [5, 7], 2)
+    set_state(world, [6, 7], 2)
+    set_state(world, [11, 8], 3)
+    set_state(world, [8, 14], 4)
+    add_link(world, [3, 4], [3, 5])
+    add_link(world, [5, 7], [6, 7])
 
-println(world)
+    println(world)
+    world
+end
 
 # dynamics
 
@@ -64,7 +67,59 @@ println(world)
 # △ -> Phi
 # all we are missing is a △ to "repair" our * from [], and also to have [] act on * to produce △
 
+function mod_location(bounds, location)
+    [
+        mod1(location[1], bounds[1]),
+        mod1(location[2], bounds[2]),
+    ]
+end
 
+function adjacent_locations(world, location)
+    bounds = 
+    [[location[1], location[2]]]
+end
+
+function no_action(world, location)
+    world
+end
+
+function move_substrate(world, location)
+    
+end
+
+function generate_dynamics()
+    Dict(
+        0 => Dict(
+            
+        ),
+        1 => [
+            Dict(
+                "propensity" => 1,
+                "action" => no_action
+            ),
+            Dict(
+                "propensity" => 1,
+                "action" => move_substrate
+            )
+        ],
+        2 => Dict(
+
+        ),
+        3 => Dict(
+
+        ),
+        4 => Dict(
+
+        )
+    )
+end
+
+function generate_actions(world, dynamics)
+    for index in each(world["states"])
+        state = world["states"][index]
+        possibilities = dynamics[state]
+    end    
+end
 
 # drawing
 
@@ -163,7 +218,7 @@ function draw_link(cairo, unit, a, b, color)
         end
         rectangle(cairo, a[1] - width, top + radius, width * 2, unit - (radius * 2))
         fill(cairo)
-    else if horizontal
+    elseif horizontal
         left = a[1]
         if b[1] < left
             left = b[1]
@@ -211,6 +266,8 @@ end
 
 cairo_surface, cairo = initialize_cairo(surface_size)
 set_background(cairo, surface_size)
+
+world = initialize_world()
 draw_world(cairo, world, unit_size, symbols, colors)
 
 write_to_png(cairo_surface, "tesselate.png")
