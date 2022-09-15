@@ -457,18 +457,20 @@ end
 
 cairo_surface, cairo = initialize_cairo(surface_size)
 
-function run_simulation(bounds, counts)
+function run_simulation(bounds, counts, frames)
     world = initialize_world(bounds, counts)
     dynamics = generate_dynamics()
 
     draw_world(cairo, surface_size, world, unit_size, symbols, colors)
-    write_to_png(cairo_surface, "out/frames/tesselate-1.png")
+    write_to_png(cairo_surface, "out/frames/tesselate-0.png")
 
-    actions = generate_actions(world, dynamics)
-    world = apply_actions(world, actions)
+    for frame in 1:frames
+        actions = generate_actions(world, dynamics)
+        world = apply_actions(world, actions)
 
-    draw_world(cairo, surface_size, world, unit_size, symbols, colors)
-    write_to_png(cairo_surface, "out/frames/tesselate-2.png")
+        draw_world(cairo, surface_size, world, unit_size, symbols, colors)
+        write_to_png(cairo_surface, "out/frames/tesselate-" * string(frame) * ".png")
+    end
 end
 
 run_simulation(
@@ -478,7 +480,8 @@ run_simulation(
         MEMBRANE => 8,
         ENZYME => 5,
         REPAIR => 3
-    )
+    ),
+    5
 )
 
 end # module tesselate
