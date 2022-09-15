@@ -66,10 +66,10 @@ function remove_link(world, a, b)
     if has_link(world, a, b)
         x = reduce(hcat, [a, b])
         y = reduce(hcat, [b, a])
-        filter!(z -> z == x, world["links"])
-        filter!(z -> z == y, world["links"])
-        filter!(z -> z == a, world["from"][b])
-        filter!(z -> z == b, world["from"][a])
+        filter!(z -> z != x, world["links"])
+        filter!(z -> z != y, world["links"])
+        filter!(z -> z != a, world["from"][b])
+        filter!(z -> z != b, world["from"][a])
     end
     world
 end
@@ -277,8 +277,13 @@ function disintegrate(degradations, world, location)
             down = degradations[state]
             world = set_state(world, location, down)
             world = set_state(world, space, down)
-            if state == MEMBRANE
+            if state == MEMBRANE && link_count(world, location) > 0
+                println("MEMBRANE " * string(location) * ":" * string(state) * " to " * string(space) * ":" * string(down))
+                println("links before " * string(world["links"]))
+                println("from before " * string(location) * ":" * string(world["from"][location]))
                 remove_links(world, location)
+                println("links after " * string(world["links"]))
+                println("from after " * string(location) * ":" * string(world["from"][location]))
             end
             break
         end
@@ -597,7 +602,7 @@ run_simulation(
         ENZYME => 5,
         REPAIR => 3
     ),
-    89
+    21
 )
 
 end # module tesselate
