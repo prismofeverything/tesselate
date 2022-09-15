@@ -62,9 +62,30 @@ function add_link(world, a, b)
     world
 end
 
+function remove_link(world, a, b)
+    if has_link(world, a, b)
+        x = reduce(hcat, [a, b])
+        y = reduce(hcat, [b, a])
+        filter!(z -> z == x, world["links"])
+        filter!(z -> z == y, world["links"])
+        filter!(z -> z == a, world["from"][b])
+        filter!(z -> z == b, world["from"][a])
+    end
+    world
+end
+
+function remove_links(world, location)
+    if haskey(world["from"], location)
+        links = [link for link in world["from"][location]]
+        for link in links
+            remove_link(world, location, link)
+        end
+    end
+end
+
 function link_count(world, a)
     if haskey(world["from"], a)
-        size(world["from"][a])
+        size(world["from"][a])[1]
     else
         0
     end
@@ -147,6 +168,28 @@ function adjacent_locations(world, location)
     map(mod_bounds, adjacent)
 end
 
+function consolidate_actions(dynamics)
+    consolidate = Dict()
+
+    for (state, actions) in dynamics
+        action_map = Dict(
+            "total_propensity" => 0,
+            "propensities" => [],
+            "actions" => []
+        )
+
+        for possibility in actions
+            propensity = possibility["propensity"]
+            action_map["total_propensity"] += propensity
+            push!(action_map["propensities"], propensity)
+            push!(action_map["actions"], possibility["action"])
+        end
+
+        consolidate[state] = action_map
+    end
+    consolidate
+end
+
 function no_action(world, location)
     world
 end
@@ -156,6 +199,7 @@ function move_element(world, location)
     state = get_state(world, location)
     adjacent = adjacent_locations(world, location)
     order = shuffle(adjacent)
+
     for space in order
         if get_state(world, space) == EMPTY
             world = set_state(world, location, EMPTY)
@@ -181,29 +225,82 @@ function move_membrane(world, location)
     world
 end
 
-function consolidate_actions(dynamics)
-    consolidate = Dict()
+function link_membrane(world, location)
+    if link_count(world, location) < 2
+        adjacent = adjacent_locations(world, location)
+        order = shuffle(adjacent)
 
-    for (state, actions) in dynamics
-        action_map = Dict(
-            "total_propensity" => 0,
-            "propensities" => [],
-            "actions" => []
-        )
-
-        for possibility in actions
-            propensity = possibility["propensity"]
-            action_map["total_propensity"] += propensity
-            push!(action_map["propensities"], propensity)
-            push!(action_map["actions"], possibility["action"])
+        for space in order
+            if get_state(world, space) == MEMBRANE && link_count(world, space) < 2
+                add_link(world, location, space)
+                break
+            end
         end
-
-        consolidate[state] = action_map
     end
-    consolidate
+
+    world
+end
+
+function produce_element(productions, world, location)
+    state = get_state(world, location)
+    adjacent = adjacent_locations(world, location)
+    order = shuffle(adjacent)
+
+    if haskey(productions, state)
+        reactant, product = productions[state]
+
+        reactants = [
+            space
+            for space in order
+            if get_state(world, space) == reactant
+        ]
+
+        if size(reactants)[1] >= 2
+            for i in 1:2
+                world = set_state(world, reactants[i], EMPTY)
+            end
+            world = set_state(world, reactants[1], product)
+        end
+    end
+
+    world
+end
+
+function disintegrate(degradations, world, location)
+    state = get_state(world, location)
+    adjacent = adjacent_locations(world, location)
+    order = shuffle(adjacent)
+
+    for space in order
+        element = get_state(world, space)
+        if element == EMPTY && haskey(degradations, state)
+            down = degradations[state]
+            world = set_state(world, location, down)
+            world = set_state(world, space, down)
+            if state == MEMBRANE
+                remove_links(world, location)
+            end
+            break
+        end
+    end
+
+    world
 end
 
 function generate_dynamics()
+    # productions are defined in the form
+    #   catalyst => [reactant, product]
+    productions = Dict(
+        ENZYME => (SUBSTRATE, MEMBRANE),
+        REPAIR => (MEMBRANE, ENZYME),
+        MEMBRANE => (ENZYME, REPAIR)
+    )
+
+    degradations = Dict(
+        reaction[2] => reaction[1]
+        for (catalyst, reaction) in productions
+    )
+
     dynamics = Dict(
         EMPTY => [
             Dict(
@@ -223,32 +320,48 @@ function generate_dynamics()
         ],
         MEMBRANE => [
             Dict(
-                "propensity" => 1,
-                "action" => no_action
+                "propensity" => 50,
+                "action" => move_membrane
+            ),
+            Dict(
+                "propensity" => 50,
+                "action" => link_membrane
+            ),
+            Dict(
+                "propensity" => 50,
+                "action" => (world, location) -> produce_element(productions, world, location)
             ),
             Dict(
                 "propensity" => 1,
-                "action" => move_membrane
+                "action" => (world, location) -> disintegrate(degradations, world, location)
             )
         ],
         ENZYME => [
             Dict(
-                "propensity" => 1,
-                "action" => no_action
+                "propensity" => 50,
+                "action" => move_element
+            ),
+            Dict(
+                "propensity" => 50,
+                "action" => (world, location) -> produce_element(productions, world, location)
             ),
             Dict(
                 "propensity" => 1,
-                "action" => move_element
+                "action" => (world, location) -> disintegrate(degradations, world, location)
             )
         ],
         REPAIR => [
             Dict(
-                "propensity" => 1,
-                "action" => no_action
+                "propensity" => 50,
+                "action" => move_element
+            ),
+            Dict(
+                "propensity" => 50,
+                "action" => (world, location) -> produce_element(productions, world, location)
             ),
             Dict(
                 "propensity" => 1,
-                "action" => move_element
+                "action" => (world, location) -> disintegrate(degradations, world, location)
             )
         ],
     )
@@ -462,15 +575,18 @@ function run_simulation(bounds, counts, frames)
     dynamics = generate_dynamics()
 
     draw_world(cairo, surface_size, world, unit_size, symbols, colors)
-    write_to_png(cairo_surface, "out/frames/tesselate-0.png")
+    write_to_png(cairo_surface, "out/frames/tesselate-" * lpad(0, 6, "0") * ".png")
 
     for frame in 1:frames
         actions = generate_actions(world, dynamics)
         world = apply_actions(world, actions)
 
         draw_world(cairo, surface_size, world, unit_size, symbols, colors)
-        write_to_png(cairo_surface, "out/frames/tesselate-" * string(frame) * ".png")
+        write_to_png(cairo_surface, "out/frames/tesselate-" * lpad(frame, 6, "0") * ".png")
     end
+
+    output = run(`bash -c 'apngasm out/tesselate.png out/frames/tesselate-*.png 2 10'`)
+    println(output)
 end
 
 run_simulation(
@@ -481,7 +597,7 @@ run_simulation(
         ENZYME => 5,
         REPAIR => 3
     ),
-    5
+    89
 )
 
 end # module tesselate
