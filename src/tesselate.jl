@@ -226,26 +226,13 @@ function move_membrane(world, location)
 end
 
 function link_membrane(world, location)
-    if link_count(world, location) < 2
+    if get_state(world, location) == MEMBRANE && link_count(world, location) < 2
         adjacent = adjacent_locations(world, location)
         order = shuffle(adjacent)
 
         for space in order
             if !has_link(world, location, space) && get_state(world, space) == MEMBRANE && link_count(world, space) < 2
-                # println("LINKING " * string(location) * ":" * string(space))
-                # println("links before " * string(world["links"]))
-                # if haskey(world["from"], location)
-                #     println("from location before " * string(location) * ":" * string(world["from"][location]))
-                # end
-                # if haskey(world["from"], space)
-                #     println("from space before " * string(space) * ":" * string(world["from"][space]))
-                # end
-
                 add_link(world, location, space)
-
-                # println("links after " * string(world["links"]))
-                # println("from location after " * string(location) * ":" * string(world["from"][location]))
-                # println("from space after " * string(space) * ":" * string(world["from"][space]))
                 break
             end
         end
@@ -294,14 +281,7 @@ function disintegrate(degradations, world, location)
             world = set_state(world, location, down)
             world = set_state(world, space, down)
             if state == MEMBRANE && link_count(world, location) > 0
-                # println("MEMBRANE " * string(location) * ":" * string(state) * " to " * string(space) * ":" * string(down))
-                # println("links before " * string(world["links"]))
-                # println("from before " * string(location) * ":" * string(world["from"][location]))
-
                 remove_links(world, location)
-
-                # println("links after " * string(world["links"]))
-                # println("from after " * string(location) * ":" * string(world["from"][location]))
             end
             break
         end
@@ -355,7 +335,7 @@ function generate_dynamics()
                 "action" => (world, location) -> produce_element(productions, world, location)
             ),
             Dict(
-                "propensity" => 5,
+                "propensity" => 3,
                 "action" => (world, location) -> disintegrate(degradations, world, location)
             )
         ],
@@ -413,14 +393,17 @@ function generate_actions(world, dynamics)
         state = world["states"][index]
         possibilities = dynamics[state]
         action = choose_action(possibilities)
-        push!(actions, ([i for i in Tuple(index)], action))
+        push!(actions, (state, [i for i in Tuple(index)], action))
     end
     shuffle(actions)
 end
 
 function apply_action(world, location_action)
-    location, action = location_action
-    action(world, location)
+    state, location, action = location_action
+    if state == get_state(world, location)
+        world = action(world, location)
+    end
+    world
 end
 
 function apply_actions(world, actions)
@@ -651,7 +634,8 @@ run_simulation(
         ENZYME => 5,
         REPAIR => 3
     ),
-    144
+    # 89
+    987
 )
 
 end # module tesselate
