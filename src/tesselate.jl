@@ -191,7 +191,7 @@ function consolidate_actions(dynamics)
 end
 
 function no_action(world, location)
-    world
+    true
 end
 
 function move_element(world, location)
@@ -199,11 +199,13 @@ function move_element(world, location)
     state = get_state(world, location)
     adjacent = adjacent_locations(world, location)
     order = shuffle(adjacent)
+    moved = false
 
     for space in order
         if get_state(world, space) == EMPTY
             world = set_state(world, location, EMPTY)
             world = set_state(world, space, state)
+            moved = true
             break
         elseif state == SUBSTRATE && get_state(world, space) == MEMBRANE
             direction = space - location
@@ -211,40 +213,45 @@ function move_element(world, location)
             if get_state(world, beyond) == EMPTY
                 world = set_state(world, location, EMPTY)
                 world = set_state(world, beyond, state)
+                moved = true
                 break
             end
         end
     end
-    world
+    moved
 end
 
 function move_membrane(world, location)
+    moved = false
     if link_count(world, location) == 0
-        world = move_element(world, location)
+        moved = move_element(world, location)
     end
-    world
+    moved
 end
 
 function link_membrane(world, location)
+    linked = false
     if get_state(world, location) == MEMBRANE && link_count(world, location) < 2
         adjacent = adjacent_locations(world, location)
         order = shuffle(adjacent)
 
         for space in order
-            if !has_link(world, location, space) && get_state(world, space) == MEMBRANE && link_count(world, space) < 2
+            linked = !has_link(world, location, space) && get_state(world, space) == MEMBRANE && link_count(world, space) < 2
+            if linked
                 add_link(world, location, space)
                 break
             end
         end
     end
 
-    world
+    linked
 end
 
 function produce_element(productions, world, location)
     state = get_state(world, location)
     adjacent = adjacent_locations(world, location)
     order = shuffle(adjacent)
+    produced = false
 
     if haskey(productions, state)
         reactant, product = productions[state]
@@ -255,7 +262,8 @@ function produce_element(productions, world, location)
             if get_state(world, space) == reactant
         ]
 
-        if size(reactants)[1] >= 2
+        produced = size(reactants)[1] >= 2
+        if produced
             for i in 1:2
                 world = set_state(world, reactants[i], EMPTY)
                 if reactant == MEMBRANE
@@ -266,17 +274,19 @@ function produce_element(productions, world, location)
         end
     end
 
-    world
+    produced
 end
 
 function disintegrate(degradations, world, location)
     state = get_state(world, location)
     adjacent = adjacent_locations(world, location)
     order = shuffle(adjacent)
+    disintegrated = false
 
     for space in order
         element = get_state(world, space)
-        if element == EMPTY && haskey(degradations, state)
+        disintegrated = element == EMPTY && haskey(degradations, state)
+        if disintegrated
             down = degradations[state]
             world = set_state(world, location, down)
             world = set_state(world, space, down)
@@ -287,7 +297,27 @@ function disintegrate(degradations, world, location)
         end
     end
 
-    world
+    disintegrated
+end
+
+function membrane_action(productions, degradations, world, location)
+    linked = link_membrane(world, location)
+    produced = false
+    moved = false
+
+    if !linked
+        produced = produce_element(productions, world, location)
+    end
+    if !produced
+        moved = move_membrane(world, location)
+    end
+
+    linked || produced || moved
+end
+
+function element_action(productions, degradations, world, location)
+    produced = false
+    moved = false
 end
 
 function generate_dynamics()
@@ -324,19 +354,22 @@ function generate_dynamics()
         MEMBRANE => [
             Dict(
                 "propensity" => 50,
-                "action" => move_membrane
+                "action" => (world, location) -> membrane_action(
+                    productions, degradations, world, location)
             ),
+            # Dict(
+            #     "propensity" => 50,
+            #     "action" => link_membrane
+            # ),
+            # Dict(
+            #     "propensity" => 50,
+            #     "action" => (world, location) -> produce_element(
+            #         productions, world, location)
+            # ),
             Dict(
-                "propensity" => 50,
-                "action" => link_membrane
-            ),
-            Dict(
-                "propensity" => 50,
-                "action" => (world, location) -> produce_element(productions, world, location)
-            ),
-            Dict(
-                "propensity" => 3,
-                "action" => (world, location) -> disintegrate(degradations, world, location)
+                "propensity" => 0.1,
+                "action" => (world, location) -> disintegrate(
+                    degradations, world, location)
             )
         ],
         ENZYME => [
@@ -346,11 +379,13 @@ function generate_dynamics()
             ),
             Dict(
                 "propensity" => 50,
-                "action" => (world, location) -> produce_element(productions, world, location)
+                "action" => (world, location) -> produce_element(
+                    productions, world, location)
             ),
             Dict(
-                "propensity" => 3,
-                "action" => (world, location) -> disintegrate(degradations, world, location)
+                "propensity" => 0.1,
+                "action" => (world, location) -> disintegrate(
+                    degradations, world, location)
             )
         ],
         REPAIR => [
@@ -359,12 +394,14 @@ function generate_dynamics()
                 "action" => move_element
             ),
             Dict(
-                "propensity" => 50,
-                "action" => (world, location) -> produce_element(productions, world, location)
+                "propensity" => 10,
+                "action" => (world, location) -> produce_element(
+                    productions, world, location)
             ),
             Dict(
-                "propensity" => 3,
-                "action" => (world, location) -> disintegrate(degradations, world, location)
+                "propensity" => 0.1,
+                "action" => (world, location) -> disintegrate(
+                    degradations, world, location)
             )
         ],
     )
@@ -401,14 +438,14 @@ end
 function apply_action(world, location_action)
     state, location, action = location_action
     if state == get_state(world, location)
-        world = action(world, location)
+        action(world, location)
     end
     world
 end
 
 function apply_actions(world, actions)
     for action in actions
-        world = apply_action(world, action)
+        apply_action(world, action)
     end
     world
 end
@@ -622,7 +659,7 @@ function run_simulation(bounds, counts, frames)
         write_to_png(cairo_surface, "out/frames/tesselate-" * lpad(frame, 6, "0") * ".png")
     end
 
-    output = run(`bash -c 'apngasm out/tesselate.png out/frames/tesselate-*.png 2 10'`)
+    output = run(`bash -c 'apngasm -o out/tesselate.png out/frames/tesselate-*.png 2 10'`)
     println(output)
 end
 
