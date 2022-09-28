@@ -367,7 +367,7 @@ function generate_dynamics()
             #         productions, world, location)
             # ),
             Dict(
-                "propensity" => 0.1,
+                "propensity" => 0.2,
                 "action" => (world, location) -> disintegrate(
                     degradations, world, location)
             )
@@ -383,7 +383,7 @@ function generate_dynamics()
                     productions, world, location)
             ),
             Dict(
-                "propensity" => 0.1,
+                "propensity" => 2,
                 "action" => (world, location) -> disintegrate(
                     degradations, world, location)
             )
@@ -399,7 +399,7 @@ function generate_dynamics()
                     productions, world, location)
             ),
             Dict(
-                "propensity" => 0.1,
+                "propensity" => 1,
                 "action" => (world, location) -> disintegrate(
                     degradations, world, location)
             )
@@ -659,7 +659,7 @@ function run_simulation(bounds, counts, frames)
         write_to_png(cairo_surface, "out/frames/tesselate-" * lpad(frame, 6, "0") * ".png")
     end
 
-    output = run(`bash -c 'apngasm -o out/tesselate.png out/frames/tesselate-*.png 2 10'`)
+    output = run(`bash -c 'apngasm -F -o out/tesselate.png out/frames/tesselate-*.png 2 10'`)
     println(output)
 end
 
@@ -671,7 +671,12 @@ run_simulation(
         ENZYME => 5,
         REPAIR => 3
     ),
+    # 55
     # 89
+    # 144
+    # 233
+    # 377
+    # 610
     987
 )
 
