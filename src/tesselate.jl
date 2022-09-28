@@ -490,7 +490,10 @@ end
 function draw_membrane(cairo, unit, location, color)
     radius = unit / 3
     set_source_rgb(cairo, color[1], color[2], color[3])
-    rectangle(cairo, location[1] - radius, location[2] - radius, radius * 2, radius * 2)
+    rectangle(
+        cairo,
+        location[1] - radius, location[2] - radius,
+        radius * 2, radius * 2)
     stroke(cairo)
 end
 
@@ -553,16 +556,25 @@ function draw_link(cairo, unit, a, b, color)
                 bottom = a[2]
             end
 
-            rectangle(cairo, a[1] - width, top - (radius * 2), width * 2, unit - (radius * 2))
+            rectangle(
+                cairo,
+                a[1] - width, top - (radius * 2),
+                width * 2, unit - (radius * 2))
             fill(cairo)
-            rectangle(cairo, a[1] - width, bottom + radius, width * 2, unit - (radius * 2))
+            rectangle(
+                cairo,
+                a[1] - width, bottom + radius,
+                width * 2, unit - (radius * 2))
             fill(cairo)
         else
             top = a[2]
             if b[2] < top
                 top = b[2]
             end
-            rectangle(cairo, a[1] - width, top + radius, width * 2, unit - (radius * 2))
+            rectangle(
+                cairo,
+                a[1] - width, top + radius,
+                width * 2, unit - (radius * 2))
             fill(cairo)
         end
     elseif horizontal
@@ -575,16 +587,25 @@ function draw_link(cairo, unit, a, b, color)
                 left = b[1]
                 right = a[1]
             end
-            rectangle(cairo, left - (radius * 2), a[2] - width, unit - (radius * 2), width * 2)
+            rectangle(
+                cairo,
+                left - (radius * 2), a[2] - width,
+                unit - (radius * 2), width * 2)
             fill(cairo)
-            rectangle(cairo, right + radius, a[2] - width, unit - (radius * 2), width * 2)
+            rectangle(
+                cairo,
+                right + radius, a[2] - width,
+                unit - (radius * 2), width * 2)
             fill(cairo)
         else
             left = a[1]
             if b[1] < left
                 left = b[1]
             end
-            rectangle(cairo, left + radius, a[2] - width, unit - (radius * 2), width * 2)
+            rectangle(
+                cairo,
+                left + radius, a[2] - width,
+                unit - (radius * 2), width * 2)
             fill(cairo)
         end
     else
@@ -659,7 +680,9 @@ function run_simulation(bounds, counts, frames)
         write_to_png(cairo_surface, "out/frames/tesselate-" * lpad(frame, 6, "0") * ".png")
     end
 
-    output = run(`bash -c 'apngasm -F -o out/tesselate.png out/frames/tesselate-*.png 2 10'`)
+    output = run(
+        `bash -c 'apngasm -F -o out/tesselate.png out/frames/tesselate-*.png 2 10'`)
+
     println(output)
 end
 
