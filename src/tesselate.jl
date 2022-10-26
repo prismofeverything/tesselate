@@ -97,6 +97,8 @@ MEMBRANE = 2
 ENZYME = 3
 REPAIR = 4
 
+element_enum = [EMPTY, SUBSTRATE, MEMBRANE, ENZYME, REPAIR]
+
 symbols = Dict(
     EMPTY => " ",
     SUBSTRATE => "◯",
@@ -665,20 +667,62 @@ end
 
 cairo_surface, cairo = initialize_cairo(surface_size)
 
+function count_elements(world)
+    counts = Dict(
+        EMPTY => 0,
+        SUBSTRATE => 0,
+        MEMBRANE => 0,
+        ENZYME => 0,
+        REPAIR => 0
+    )
+
+    for index in state_indexes(world)
+        state = world["states"][index]
+        counts[state] += 1
+    end
+
+    counts
+end
+
+function merge_counts(counts)
+    series = Dict{Int, Vector{Int}}()
+    for element in element_enum
+        series[element] = Vector{Int}()
+    end
+
+    for frame in counts
+        for (element, count) in frame
+            push!(series[element], count)
+        end
+    end
+
+    series
+end
+
+function simulation_frame(world, frame)
+    counts = count_elements(world)
+    draw_world(cairo, surface_size, world, unit_size, symbols, colors)
+    write_to_png(cairo_surface, "out/frames/tesselate-" * lpad(frame, 6, "0") * ".png")
+    counts
+end
+
 function run_simulation(bounds, counts, frames)
     world = initialize_world(bounds, counts)
     dynamics = generate_dynamics()
 
-    draw_world(cairo, surface_size, world, unit_size, symbols, colors)
-    write_to_png(cairo_surface, "out/frames/tesselate-" * lpad(0, 6, "0") * ".png")
+    counts = Vector{Dict{Int, Int}}()
+
+    frame_counts = simulation_frame(world, 0)
+    push!(counts, frame_counts)
 
     for frame in 1:frames
         actions = generate_actions(world, dynamics)
         world = apply_actions(world, actions)
-
-        draw_world(cairo, surface_size, world, unit_size, symbols, colors)
-        write_to_png(cairo_surface, "out/frames/tesselate-" * lpad(frame, 6, "0") * ".png")
+        frame_counts = simulation_frame(world, frame)
+        push!(counts, frame_counts)
     end
+
+    series = merge_counts(counts)
 
     output = run(
         `bash -c 'apngasm -F -o out/tesselate.png out/frames/tesselate-*.png 2 10'`)
@@ -689,8 +733,8 @@ end
 run_simulation(
     [13, 13],
     Dict(
-        EMPTY => 21,
-        MEMBRANE => 8,
+        EMPTY => 8,
+        MEMBRANE => 21,
         ENZYME => 5,
         REPAIR => 3
     ),
