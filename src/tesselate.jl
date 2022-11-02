@@ -107,6 +107,14 @@ symbols = Dict(
     REPAIR => "△"
 )
 
+element_names = Dict(
+    EMPTY => "empty",
+    SUBSTRATE => "substrate",
+    MEMBRANE => "membrane",
+    ENZYME => "enzyme",
+    REPAIR => "repair"
+)
+
 colors = Dict(
     EMPTY => [0, 0, 0],
     SUBSTRATE => [0.6, 0.6, 0.6],
@@ -706,6 +714,36 @@ function simulation_frame(world, frame)
     counts
 end
 
+using PlotlyJS
+
+function hex_color(color)
+    hex = "#"
+    for component in color
+        x = Int(floor(component * 16))
+        if x == 16
+            x = 15
+        end
+        h = string(x, base=16)
+        hex = hex * h
+    end
+    hex
+end
+
+function plot_series(all_series)
+    length = size(all_series[EMPTY])
+    x = 1:length[1]
+    traces = Vector{PlotlyJS.AbstractTrace}()
+    for (element, series) in all_series
+        color = hex_color(colors[element])
+        trace = PlotlyJS.scatter(;x=x, y=series, mode="lines", color=color, name=symbols[element])
+        push!(traces, trace)
+    end
+
+    layout = PlotlyJS.Layout(xaxis_range=[1, length], yaxis_range=[0, 111])
+    p = PlotlyJS.plot(traces, layout)
+    PlotlyJS.savefig(p, "out/counts.png")
+end
+
 function run_simulation(bounds, counts, frames)
     world = initialize_world(bounds, counts)
     dynamics = generate_dynamics()
@@ -723,14 +761,17 @@ function run_simulation(bounds, counts, frames)
     end
 
     series = merge_counts(counts)
+    series_plot = plot_series(series)
 
     output = run(
         `bash -c 'apngasm -F -o out/tesselate.png out/frames/tesselate-*.png 2 10'`)
 
     println(output)
+
+    series
 end
 
-run_simulation(
+series = run_simulation(
     [13, 13],
     Dict(
         EMPTY => 8,
